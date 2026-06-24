@@ -13,7 +13,9 @@ namespace PoopPanic
 
     /// <summary>
     /// 状態機械で動く犬。Wander→Tell(予兆)→本物 or フェイント。
-    /// 本物ならお尻の位置にウンチを生成する。性格でテンポと本物率が変わる。
+    /// 見た目は ithappy の Dog_001 プレハブ（Animator付き）を使い、
+    /// 移動は本スクリプトが transform で行い、歩行/待機は Animator の "Vert"
+    /// （移動速度）で再生する。本物の予兆はしゃがみ＋プルプル＋色変化で表現。
     /// </summary>
     public class Dog : MonoBehaviour
     {
@@ -26,30 +28,35 @@ namespace PoopPanic
         private float _speed;
         private float _stateTimer;
         private float _nextTellTimer;
-        private bool _isReal;            // 今回の予兆が本物か
+        private bool _isReal;
         private float _baseScaleY;
-        private Transform _body;
-        private Renderer _renderer;
+        private Transform _body;          // 見た目モデル（向き回転・しゃがみ用）
+        private Animator _anim;
+        private Renderer _renderer;       // 予兆の色変化用（SkinnedMeshRenderer）
         private Color _baseColor;
+        private bool _hasColor;
         private bool _frozen;
+        private float _animVert;
 
-        // Pack 用：誰かが Tell に入ったらフラグを立てる（静的な簡易同期）。
+        private static readonly int VertHash = Animator.StringToHash("Vert");
         private static bool s_someoneTelling;
 
-        public void Init(DogPersonality personality, Transform body, Renderer rend, Color color)
+        public void Init(DogPersonality personality, Transform body, Animator anim, Renderer rend)
         {
             Personality = personality;
             _body = body;
+            _anim = anim;
             _renderer = rend;
-            _baseColor = color;
             _baseScaleY = body.localScale.y;
+
+            _hasColor = rend != null && rend.material.HasProperty("_Color");
+            _baseColor = _hasColor ? _renderer.material.color : Color.white;
 
             _speed = personality == DogPersonality.Lazy ? 1.6f
                    : personality == DogPersonality.Dash ? 4.2f
                    : 2.6f;
 
             ResetState();
-            // 個体差で予兆タイミングをずらす（index ベースではなく初期化時に分散）。
             _nextTellTimer = Random.Range(0.6f, GameConfig.StartSpawnInterval);
         }
 
@@ -59,7 +66,8 @@ namespace PoopPanic
             _state = State.Wander;
             PickWanderTarget();
             SetSquat(0f);
-            if (_renderer != null) _renderer.material.color = _baseColor;
+            Tint(_baseColor);
+            SetVert(0f, true);
         }
 
         public void Freeze() => _frozen = true;
@@ -67,7 +75,11 @@ namespace PoopPanic
         private void Update()
         {
             var gm = GameManager.Instance;
-            if (_frozen || (gm != null && gm.GameOver)) return;
+            if (_frozen || (gm != null && gm.GameOver))
+            {
+                SetVert(0f, false);
+                return;
+            }
 
             switch (_state)
             {
@@ -81,17 +93,22 @@ namespace PoopPanic
 
         private void TickWander(GameManager gm)
         {
-            MoveTowards(_wanderTarget, _speed);
+            Vector3 flat = transform.position; flat.y = 0f;
+            float dist = Vector3.Distance(flat, _wanderTarget);
 
-            Vector3 flat = transform.position; flat.y = 0;
-            if ((flat - _wanderTarget).sqrMagnitude < 0.25f)
+            if (dist < 0.5f)
+            {
                 PickWanderTarget();
+                SetVert(0f, false);
+            }
+            else
+            {
+                MoveTowards(_wanderTarget, _speed);
+                SetVert(_speed, false);
+            }
 
             _nextTellTimer -= Time.deltaTime;
-
-            // 群れ犬は、誰かが予兆を始めると自分も乗りやすい。
             bool packTrigger = Personality == DogPersonality.Pack && s_someoneTelling && Random.value < 0.03f;
-
             if (_nextTellTimer <= 0f || packTrigger)
                 BeginTell(gm);
         }
@@ -106,11 +123,9 @@ namespace PoopPanic
 
         private void BeginTell(GameManager gm)
         {
-            // ダッシュ犬は予兆の前に別の場所へ走ってからしゃがむ。
             if (Personality == DogPersonality.Dash)
                 PickWanderTarget();
 
-            // 本物率：難易度が上がるほどフェイントが増える。
             float difficulty = gm != null ? gm.Difficulty : 0f;
             float realChance = Personality switch
             {
@@ -119,30 +134,30 @@ namespace PoopPanic
                 DogPersonality.Pack => 0.5f,
                 _ => 0.6f
             };
-            realChance -= difficulty * 0.2f; // 後半ほど騙してくる
+            realChance -= difficulty * 0.2f;
             _isReal = Random.value < Mathf.Clamp01(realChance);
 
             _state = State.Tell;
             _stateTimer = Personality == DogPersonality.Lazy ? 0.5f : Random.Range(0.7f, 1.2f);
             s_someoneTelling = true;
+            SetVert(0f, true);
 
-            if (_renderer != null)
-                _renderer.material.color = Color.Lerp(_baseColor, new Color(1f, 0.6f, 0.2f), 0.4f);
+            Tint(Color.Lerp(_baseColor, new Color(1f, 0.55f, 0.15f), 0.6f));
         }
 
         private void TickTell()
         {
+            SetVert(0f, false);
             _stateTimer -= Time.deltaTime;
-            float t = 1f - Mathf.Clamp01(_stateTimer); // 0→1 でしゃがみ込む
+            float t = 1f - Mathf.Clamp01(_stateTimer);
 
-            // プルプル揺れ＋しゃがみ。フレーム数で揺らす（Random/時刻に依存しすぎない）。
             float jitter = Mathf.Sin(Time.time * 40f) * 0.05f;
             SetSquat(Mathf.Min(0.5f, t * 0.5f) + Mathf.Abs(jitter));
 
             if (_stateTimer <= 0f)
             {
                 s_someoneTelling = false;
-                if (_renderer != null) _renderer.material.color = _baseColor;
+                Tint(_baseColor);
 
                 if (_isReal)
                 {
@@ -152,7 +167,6 @@ namespace PoopPanic
                 }
                 else
                 {
-                    // フェイント：何食わぬ顔で歩き出す。
                     SetSquat(0f);
                     ScheduleNextTell();
                     _state = State.Wander;
@@ -162,6 +176,7 @@ namespace PoopPanic
 
         private void TickCooldown()
         {
+            SetVert(0f, false);
             SetSquat(Mathf.Lerp(GetSquat(), 0f, 10f * Time.deltaTime));
             _stateTimer -= Time.deltaTime;
             if (_stateTimer <= 0f)
@@ -176,7 +191,7 @@ namespace PoopPanic
         {
             float d = GameManager.Instance != null ? GameManager.Instance.Difficulty : 0f;
             float interval = Mathf.Lerp(GameConfig.StartSpawnInterval, GameConfig.MinSpawnInterval, d);
-            if (Personality == DogPersonality.Mischief) interval *= 0.7f; // よく仕掛ける
+            if (Personality == DogPersonality.Mischief) interval *= 0.7f;
             if (Personality == DogPersonality.Lazy) interval *= 1.5f;
             _nextTellTimer = interval * Random.Range(0.7f, 1.3f);
         }
@@ -185,7 +200,6 @@ namespace PoopPanic
 
         private void SpawnPoop()
         {
-            // お尻側（進行方向の後ろ）に落とす。
             Vector3 behind = _body != null ? -_body.forward : Vector3.back;
             Vector3 pos = transform.position + behind * 0.6f;
             pos.y = 0f;
@@ -202,11 +216,18 @@ namespace PoopPanic
                 _body.forward = Vector3.Slerp(_body.forward, to.normalized, 8f * Time.deltaTime);
         }
 
+        private void SetVert(float target, bool instant)
+        {
+            _animVert = instant ? target : Mathf.Lerp(_animVert, target, 10f * Time.deltaTime);
+            if (_anim != null) _anim.SetFloat(VertHash, _animVert);
+        }
+
         private void SetSquat(float amount)
         {
             if (_body == null) return;
             var s = _body.localScale;
-            s.y = _baseScaleY * (1f - Mathf.Clamp(amount, 0f, 0.6f));
+            float baseX = _baseScaleY; // 等方スケール前提（Bootstrap で uniform 設定）
+            s.y = baseX * (1f - Mathf.Clamp(amount, 0f, 0.6f));
             _body.localScale = s;
         }
 
@@ -214,6 +235,11 @@ namespace PoopPanic
         {
             if (_body == null) return 0f;
             return 1f - (_body.localScale.y / _baseScaleY);
+        }
+
+        private void Tint(Color c)
+        {
+            if (_hasColor && _renderer != null) _renderer.material.color = c;
         }
     }
 }

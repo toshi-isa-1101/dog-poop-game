@@ -47,6 +47,16 @@ crashlytics-build.properties
 # Local Unity batch logs
 /*.log
 
+# 診断用スクリーンショット
+/diag_*.png
+
+# Asset Store で購入・インポートしたサードパーティアセット（再配布不可・容量大のため除外）
+# 各自 Unity の Package Manager > My Assets からインポートすること。
+/Assets/ithappy/
+/Assets/ithappy.meta
+/Assets/SimpleNaturePack/
+/Assets/SimpleNaturePack.meta
+
 # OS
 .DS_Store
 Thumbs.db

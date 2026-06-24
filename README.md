@@ -29,6 +29,20 @@
 
 このリポジトリは **そのまま開ける Unity プロジェクト**です（**Unity 6000.5.0f1 / Unity 6.5 で動作確認済み**。2022.3 LTS 以降でも動くはずです）。
 
+### 必要なアセット（Asset Store）
+
+見た目には以下の Asset Store アセットを使用します。**ライセンス上リポジトリには含めていない**（`.gitignore` で除外）ので、各自インポートしてください。Unity で開き、**Window ▸ Package Manager ▸ My Assets** から Download / Import します。
+
+| 用途 | アセット | 使用パス |
+|------|----------|----------|
+| 犬モデル | ithappy「Animals FREE」 | `Assets/ithappy/Animals_FREE/Prefabs/Dog_001.prefab` |
+| 公園の地面・木・草 | Simple Nature Pack | `Assets/SimpleNaturePack/Prefabs/*` |
+
+> アセットが無くても起動はできます（`Bootstrap` が自動でプリミティブの犬・地面に**フォールバック**）。アセットを入れると本物のモデルに差し替わります。
+> インポート後は **PoopPanic ▸ Create Game Scene** でシーンを作り直すと参照が焼き込まれます。
+>
+> ⚠️ ithappy の犬マテリアルは **URP 用シェーダー**ですが、本プロジェクトは Built-in パイプラインのため、`Bootstrap` が実行時に犬テクスチャ付き **Standard マテリアルへ自動差し替え**します（マゼンタ回避）。
+
 ### A. Unity エディタで開いて遊ぶ（おすすめ）
 
 1. Unity Hub → **Add** → このフォルダ（`dog-poop-game`）を追加して開く
