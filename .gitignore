@@ -44,6 +44,9 @@
 # Crashlytics
 crashlytics-build.properties
 
+# Local Unity batch logs
+/*.log
+
 # OS
 .DS_Store
 Thumbs.db
