@@ -70,13 +70,13 @@ namespace PoopPanic
         {
             float cover = GameConfig.FieldHalfExtent + 2f;
 
-            // 下地の緑プレーン（タイルの隙間から空が見えないように）。
+            // 下地の緑プレーン（タイルの隙間から空が見えないように）。上面を地面レベル(y=0)の少し下に置く。
             var backing = GameObject.CreatePrimitive(PrimitiveType.Plane);
             backing.name = "GroundBacking";
             Destroy(backing.GetComponent<Collider>());
             float bscale = (cover * 2f) / 10f;
             backing.transform.localScale = new Vector3(bscale, 1f, bscale);
-            backing.transform.position = new Vector3(0, -0.02f, 0);
+            backing.transform.position = new Vector3(0, -0.05f, 0);
             backing.GetComponent<Renderer>().material.color = new Color(0.40f, 0.60f, 0.30f);
 
             if (groundTilePrefab == null || groundTileSize < 0.1f) return;
@@ -99,6 +99,22 @@ namespace PoopPanic
                     StripColliders(tile);
                 }
             }
+
+            // 地面プレハブのピボットが表面に無いことがあるので、上面が y=0 に来るよう全体を上下移動。
+            // これで犬・プレイヤー（y=0 に立つ）がちょうど地面の上に乗る。
+            var gb = ComputeWorldBounds(parent.gameObject);
+            if (gb.HasValue)
+                parent.position += new Vector3(0f, -gb.Value.max.y, 0f);
+        }
+
+        /// <summary>子レンダラーをまとめたワールド AABB を返す（接地合わせ用）。</summary>
+        private static Bounds? ComputeWorldBounds(GameObject go)
+        {
+            var rends = go.GetComponentsInChildren<Renderer>();
+            if (rends.Length == 0) return null;
+            var b = rends[0].bounds;
+            for (int i = 1; i < rends.Length; i++) b.Encapsulate(rends[i].bounds);
+            return b;
         }
 
         private void ScatterProps()
@@ -212,6 +228,16 @@ namespace PoopPanic
                 model.transform.SetParent(root.transform, false);
                 model.transform.localPosition = Vector3.zero;
                 model.transform.localScale = Vector3.one * size;
+
+                // 接地合わせ：モデルの足元(min.y)を root(y=0)に揃える。
+                // プレハブのピボットが足元に無くても地面にめり込まない。
+                var db = ComputeWorldBounds(model);
+                if (db.HasValue)
+                {
+                    var lp = model.transform.localPosition;
+                    lp.y -= db.Value.min.y - root.transform.position.y;
+                    model.transform.localPosition = lp;
+                }
                 visual = model.transform;
             }
             else
